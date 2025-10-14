@@ -569,6 +569,10 @@ subroutine numhess( &
          res%polt(i) = res%polt(i) * autoaa4byamu()
       enddo
 
+      ! multiply with correct factors to get proper unit -> * autoaa4byamu()
+        res%polt = res%polt * autoaa4byamu() * autokmmol
+
+
       ! Store coupled intensities in results structure
       if (allocated(res%coupled)) deallocate(res%coupled)
       allocate(res%coupled(n3))
