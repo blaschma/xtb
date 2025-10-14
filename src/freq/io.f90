@@ -187,7 +187,7 @@ contains
 
    end subroutine wrdipd
 
-   subroutine write_tm_vibspectrum(ich, n3, freq, ir_int, raman_activity, temp, v_incident)
+   subroutine write_tm_vibspectrum(ich, n3, freq, ir_int, raman_activity, temp, v_incident, coupled_int)
       use xtb_setparam
       use xtb_mctc_constants
       use xtb_mctc_convert
@@ -196,6 +196,7 @@ contains
       real(wp), intent(in) :: freq(n3)
       real(wp), intent(in) :: ir_int(n3)
       real(wp), intent(in), optional :: raman_activity(n3)
+      real(wp), intent(in), optional :: coupled_int(n3)
       !> CAUTION: v_incident is in cm**(-1)
       real(wp), intent(in), optional :: temp, v_incident
       real(wp), allocatable :: raman_int(:)
@@ -233,30 +234,57 @@ contains
             raman_int(i) = prefactor * hbycvb * v0minvito4 * raman_act_si * 1.0e+20_wp
          end do
 
-         write (ich, '("$vibrational spectrum")')
-   write(ich,'("#  mode     symmetry     wave number   IR intensity   Raman activity   Raman scatt. cross-section   selection rules")')
-   write(ich,'("#                           (cm⁻¹)      (km*mol⁻¹)      (Å⁴*amu⁻¹)             (Å²*sr⁻¹)              IR     RAMAN")')
-         do i = 1, n3
-            if (abs(freq(i)) < thr) then
-               write (ich, '(i6,9x,    f18.2,f16.5,f16.5,8x,e16.5,13x," - ",5x," - ")') &
-                  &  i, freq(i), 0.0_wp, 0.0_wp, 0.0_wp
-            else
-               write (ich, '(i6,8x,"a",f18.2,f16.5,f16.5,8x,e16.5,13x)', advance="no") &
-                  &  i, freq(i), ir_int(i), raman_activity(i), raman_int(i)
-
-               if (ir_int(i) > thr_int) then
-                  write (ich, '(a)', advance="no") "YES"
+         if (present(coupled_int)) then
+            write (ich, '("$vibrational spectrum")')
+            write(ich,'("#  mode     symmetry     wave number   IR intensity   Raman activity   Raman scatt. cross-section   Coupled IR-Raman    selection rules")')
+            write(ich,'("#                           (cm⁻¹)      (km*mol⁻¹)      (Å⁴*amu⁻¹)             (Å²*sr⁻¹)                  (a.u.)            IR     RAMAN")')
+            do i = 1, n3
+               if (abs(freq(i)) < thr) then
+                  write (ich, '(i6,9x,    f18.2,f16.5,f16.5,8x,e16.5,8x,e16.5,8x," - ",5x," - ")') &
+                     &  i, freq(i), 0.0_wp, 0.0_wp, 0.0_wp, 0.0_wp
                else
-                  write (ich, '(a)', advance="no") "NO "
-               end if
+                  write (ich, '(i6,8x,"a",f18.2,f16.5,f16.5,8x,e16.5,8x,e16.5,8x)', advance="no") &
+                     &  i, freq(i), ir_int(i), raman_activity(i), raman_int(i), coupled_int(i)
 
-               if (raman_activity(i) > thr_int) then
-                  write (ich, '(5x,a)') "YES"
-               else
-                  write (ich, '(5x,a)') "NO "
+                  if (ir_int(i) > thr_int) then
+                     write (ich, '(a)', advance="no") "YES"
+                  else
+                     write (ich, '(a)', advance="no") "NO "
+                  end if
+
+                  if (raman_activity(i) > thr_int) then
+                     write (ich, '(5x,a)') "YES"
+                  else
+                     write (ich, '(5x,a)') "NO "
+                  end if
                end if
-            end if
-         end do
+            end do
+         else
+            write (ich, '("$vibrational spectrum")')
+            write(ich,'("#  mode     symmetry     wave number   IR intensity   Raman activity   Raman scatt. cross-section   selection rules")')
+            write(ich,'("#                           (cm⁻¹)      (km*mol⁻¹)      (Å⁴*amu⁻¹)             (Å²*sr⁻¹)              IR     RAMAN")')
+            do i = 1, n3
+               if (abs(freq(i)) < thr) then
+                  write (ich, '(i6,9x,    f18.2,f16.5,f16.5,8x,e16.5,13x," - ",5x," - ")') &
+                     &  i, freq(i), 0.0_wp, 0.0_wp, 0.0_wp
+               else
+                  write (ich, '(i6,8x,"a",f18.2,f16.5,f16.5,8x,e16.5,13x)', advance="no") &
+                     &  i, freq(i), ir_int(i), raman_activity(i), raman_int(i)
+
+                  if (ir_int(i) > thr_int) then
+                     write (ich, '(a)', advance="no") "YES"
+                  else
+                     write (ich, '(a)', advance="no") "NO "
+                  end if
+
+                  if (raman_activity(i) > thr_int) then
+                     write (ich, '(5x,a)') "YES"
+                  else
+                     write (ich, '(5x,a)') "NO "
+                  end if
+               end if
+            end do
+         end if
       else
          write (ich, '("$vibrational spectrum")')
          write (ich, '("#  mode     symmetry     wave number   IR intensity    selection rules")')

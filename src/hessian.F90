@@ -92,6 +92,8 @@ subroutine numhess( &
    integer, allocatable :: nb(:,:)
    integer, allocatable :: indx(:),molvec(:),izero(:)
    real(wp),allocatable :: bond(:,:)
+   real(wp),allocatable :: coupled_int(:)
+   real(wp) :: alpha_prime(3,3), mu_prime(3)
 
 !$ integer  :: nproc
 
@@ -134,6 +136,7 @@ subroutine numhess( &
    if (set%elprop == p_elprop_alpha) then
       allocate(dalphadr(6,n3), source = 0.0_wp)
       allocate(dalphadq(6,n3), source = 0.0_wp)
+      allocate(coupled_int(n3), source = 0.0_wp)
    end if
 
    rd=.false.
@@ -543,15 +546,172 @@ subroutine numhess( &
             enddo
             dalphadq(k,i) = sum2
          enddo
+
+         ! Construct full 3x3 polarizability derivative tensor from Voigt notation
+         ! dalphadq already contains the polarizability derivatives in normal mode i
+         alpha_prime(1,1) = dalphadq(1,i)  ! xx
+         alpha_prime(1,2) = dalphadq(2,i)  ! xy
+         alpha_prime(2,1) = dalphadq(2,i)  ! xy (symmetric)
+         alpha_prime(2,2) = dalphadq(3,i)  ! yy
+         alpha_prime(1,3) = dalphadq(4,i)  ! xz
+         alpha_prime(3,1) = dalphadq(4,i)  ! xz (symmetric)
+         alpha_prime(2,3) = dalphadq(5,i)  ! yz
+         alpha_prime(3,2) = dalphadq(5,i)  ! yz (symmetric)
+         alpha_prime(3,3) = dalphadq(6,i)  ! zz
+
+         ! Calculate coupled orientational average for this mode
+         call calculate_coupled_average(mu_prime, alpha_prime, coupled_int(i))
+
          asq = (dalphadq(1,i)+dalphadq(3,i)+dalphadq(6,i))**2 / 9.0_wp
          gamsq = ( (dalphadq(1,i)-dalphadq(3,i))**2 + (dalphadq(3,i)-dalphadq(6,i))**2 + (dalphadq(6,i)-dalphadq(1,i))**2 &
             & + 6.0_wp*(dalphadq(2,i)**2 + dalphadq(5,i)**2 + dalphadq(4,i)**2) )*0.5_wp
          res%polt(i) = (45.0_wp*asq + 7.0_wp*gamsq)
          res%polt(i) = res%polt(i) * autoaa4byamu()
       enddo
+
+      ! Store coupled intensities in results structure
+      if (allocated(res%coupled)) deallocate(res%coupled)
+      allocate(res%coupled(n3))
+      res%coupled = coupled_int
+
+      write(env%unit,'(a)') 'Coupled IR-Raman intensities calculated'
+      write(env%unit,'(100(1x,es12.5))') res%coupled
+      !if (allocated(coupled_int)) deallocate(coupled_int)
+
    end if
 
 end subroutine numhess
+
+! Subroutine to calculate coupled orientational average <|eμ'|²|ea'e|²>
+! This implements equation (S10) from 10.1021/acs.jpca.2c03700
+subroutine calculate_coupled_average(mu_prime, alpha_prime, result)
+   use xtb_mctc_accuracy, only : wp
+   implicit none
+
+   ! Arguments
+   real(wp), intent(in)  :: mu_prime(3)        ! Transition dipole vector
+   real(wp), intent(in)  :: alpha_prime(3,3)   ! Transition polarizability tensor (symmetric)
+   real(wp), intent(out) :: result             ! Coupled orientational average
+
+   ! Local variables
+   real(wp) :: mux, muy, muz
+   real(wp) :: axx, axy, axz, ayy, ayz, azz
+   real(wp) :: term1, term2, term3, term4, term5, term6, term7, term8
+
+   ! Extract dipole components
+   mux = mu_prime(1)
+   muy = mu_prime(2)
+   muz = mu_prime(3)
+
+   ! Extract polarizability components (assuming symmetric tensor)
+   axx = alpha_prime(1,1)
+   axy = alpha_prime(1,2)  ! = alpha_prime(2,1)
+   axz = alpha_prime(1,3)  ! = alpha_prime(3,1)
+   ayy = alpha_prime(2,2)
+   ayz = alpha_prime(2,3)  ! = alpha_prime(3,2)
+   azz = alpha_prime(3,3)
+
+   ! Line 1-2
+   term1 = 2.0_wp * axx * (12.0_wp * mux * axy * muy + &
+           4.0_wp * muz * (3.0_wp * mux * axz + muy * ayz) + &
+           ayy * (3.0_wp * mux**2 + 3.0_wp * muy**2 + muz**2) + &
+           azz * (3.0_wp * mux**2 + muy**2 + 3.0_wp * muz**2))
+
+   ! Line 3
+   term2 = 8.0_wp * axy * (2.0_wp * muz * (mux * ayz + axz * muy) + &
+           mux * muy * (3.0_wp * ayy + azz)) + &
+           4.0_wp * axz**2 * muy**2
+
+   ! Line 4
+   term3 = 3.0_wp * axx**2 * (5.0_wp * mux**2 + muy**2 + muz**2) + &
+           4.0_wp * axy**2 * (3.0_wp * (mux**2 + muy**2) + muz**2)
+
+   ! Line 5
+   term4 = 8.0_wp * muz * (mux * axz * (ayy + 3.0_wp * azz) + &
+           3.0_wp * muy * ayz * (ayy + azz)) + &
+           16.0_wp * mux * axz * muy * ayz
+
+   ! Line 6
+   term5 = 3.0_wp * muz**2 * (4.0_wp * axz**2 + ayy**2 + 2.0_wp * ayy * azz + &
+           4.0_wp * ayz**2 + 5.0_wp * azz**2) + &
+           15.0_wp * muy**2 * ayy**2
+
+   ! Line 7
+   term6 = 3.0_wp * mux**2 * ayy**2 + 2.0_wp * mux**2 * ayy * azz + &
+           4.0_wp * mux**2 * ayz**2 + 3.0_wp * mux**2 * azz**2
+
+   ! Line 8
+   term7 = 6.0_wp * muy**2 * ayy * azz + 12.0_wp * muy**2 * ayz**2 + &
+           3.0_wp * muy**2 * azz**2
+
+   term8 = 12.0_wp * mux**2 * axz**2
+
+   ! Sum all terms and divide by 105
+   result = (term1 + term2 + term3 + term4 + term5 + term6 + term7 + term8) / 105.0_wp
+
+end subroutine calculate_coupled_average
+
+
+! Alternative version integrated with the vibrational analysis
+! This computes coupled average for each normal mode
+subroutine compute_coupled_raman_intensities(n3, dipd, dalphadr, hess, amass_au, coupled_int)
+   use xtb_mctc_accuracy, only : wp
+   implicit none
+
+   ! Arguments
+   integer, intent(in)   :: n3                 ! 3*natoms
+   real(wp), intent(in)  :: dipd(3, n3)        ! Dipole derivatives (3 x 3N)
+   real(wp), intent(in)  :: dalphadr(6, n3)    ! Polarizability derivatives (6 x 3N, Voigt notation)
+   real(wp), intent(in)  :: hess(n3, n3)       ! Hessian matrix (mass-weighted eigenvectors)
+   real(wp), intent(in)  :: amass_au(n3)       ! Atomic masses in atomic units
+   real(wp), intent(out) :: coupled_int(n3)    ! Coupled Raman intensities for each mode
+
+   ! Local variables
+   integer  :: i, j, k
+   real(wp) :: sum2
+   real(wp) :: mu_prime(3)                     ! Transition dipole in normal mode i
+   real(wp) :: alpha_prime(3,3)                ! Transition polarizability in normal mode i
+   real(wp) :: dalphadq(6)                     ! Polarizability derivative for mode i
+
+   ! Loop over normal modes
+   do i = 1, n3
+
+      ! Calculate transition dipole derivative for mode i
+      do k = 1, 3
+         sum2 = 0.0_wp
+         do j = 1, n3
+            sum2 = sum2 + dipd(k,j) * (hess(j,i) * amass_au(j))
+         end do
+         mu_prime(k) = sum2
+      end do
+
+      ! Calculate transition polarizability derivative for mode i
+      do k = 1, 6
+         sum2 = 0.0_wp
+         do j = 1, n3
+            sum2 = sum2 + (hess(j,i) * amass_au(j)) * dalphadr(k,j)
+         end do
+         dalphadq(k) = sum2
+      end do
+
+      ! Convert from Voigt notation (6 components) to full 3x3 tensor
+      ! Voigt: 1=xx, 2=xy, 3=yy, 4=xz, 5=yz, 6=zz
+      alpha_prime(1,1) = dalphadq(1)  ! xx
+      alpha_prime(1,2) = dalphadq(2)  ! xy
+      alpha_prime(2,1) = dalphadq(2)  ! xy (symmetric)
+      alpha_prime(2,2) = dalphadq(3)  ! yy
+      alpha_prime(1,3) = dalphadq(4)  ! xz
+      alpha_prime(3,1) = dalphadq(4)  ! xz (symmetric)
+      alpha_prime(2,3) = dalphadq(5)  ! yz
+      alpha_prime(3,2) = dalphadq(5)  ! yz (symmetric)
+      alpha_prime(3,3) = dalphadq(6)  ! zz
+
+      ! Calculate coupled orientational average for this mode
+      call calculate_coupled_average(mu_prime, alpha_prime, coupled_int(i))
+
+   end do
+
+end subroutine compute_coupled_raman_intensities
 
 subroutine numhess_rmsd( &
       & env,mol,hbias)

@@ -112,6 +112,7 @@ module xtb_type_data
       real(wp),allocatable :: rmass(:)
       real(wp),allocatable :: dipt(:)
       real(wp),allocatable :: polt(:)
+      real(wp), allocatable :: coupled(:)
       character(len=:),allocatable :: pg
    contains
       procedure :: allocate => allocate_freq_results
@@ -156,6 +157,7 @@ subroutine allocate_freq_results(self,n)
    allocate( self%rmass(3*n),     source = 0.0_wp )
    allocate( self%dipt (3*n),     source = 0.0_wp )
    allocate( self%polt (3*n),     source = 0.0_wp )
+   allocate(self%coupled(3*n), source=0.0_wp)
 end subroutine allocate_freq_results
 
 subroutine deallocate_freq_results(self)
