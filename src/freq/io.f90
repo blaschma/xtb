@@ -200,6 +200,7 @@ contains
       !> CAUTION: v_incident is in cm**(-1)
       real(wp), intent(in), optional :: temp, v_incident
       real(wp), allocatable :: raman_int(:)
+      real(wp), allocatable :: conversion_raman_ir(:)
       integer :: i
       real(wp) :: thr = 1.0e-2_wp
       real(wp) :: thr_int = 1.0e-2_wp
@@ -207,6 +208,7 @@ contains
 
       if (set%elprop == p_elprop_alpha) then
          allocate (raman_int(n3), source=0.0_wp)
+         allocate (conversion_raman_ir(n3), source=0.0_wp)         
          !> Conversion into measurable intensities follows
          !> https://doi.org/10.1016/j.cplett.2004.12.096
          !> Chemical Physics Letters 403 (2005) 211–217
@@ -232,19 +234,29 @@ contains
             raman_act_si = raman_activity(i) / m4bykgtoang4byamu()
             !> putting it all together
             raman_int(i) = prefactor * hbycvb * v0minvito4 * raman_act_si * 1.0e+20_wp
+
+            if (present(coupled_int)) then               
+               conversion_raman_ir(i) = coupled_int(i)  / m4bykgtoang4byamu()
+               !convert to A^2/sr
+               conversion_raman_ir(i) = prefactor * hbycvb * v0minvito4 * raman_act_si * 1.0e+20_wp 
+               !convert to cm^2/sr
+               conversion_raman_ir(i) = conversion_raman_ir(i) * 1.0e-16_wp 
+            end if
+
          end do
 
-         if (present(coupled_int)) then
+         if (present(coupled_int)) then         
+
             write (ich, '("$vibrational spectrum")')
-            write(ich,'("#  mode     symmetry     wave number   IR intensity   Raman activity   Raman scatt. cross-section   Coupled IR-Raman    selection rules")')
-            write(ich,'("#                           (cm⁻¹)      (km*mol⁻¹)      (Å⁴*amu⁻¹)             (Å²*sr⁻¹)                  (a.u.)            IR     RAMAN")')
+            write(ich,'("#  mode     symmetry     wave number   IR intensity   Raman activity   Raman scatt. cross-section   IR-Raman conversion    selection rules")')
+            write(ich,'("#                           (cm⁻¹)      (km*mol⁻¹)      (Å⁴*amu⁻¹)             (Å²*sr⁻¹)            (km⋅mol−1⋅cm2⋅sr−1)    IR     RAMAN")')
             do i = 1, n3
                if (abs(freq(i)) < thr) then
                   write (ich, '(i6,9x,    f18.2,f16.5,f16.5,8x,e16.5,8x,e16.5,8x," - ",5x," - ")') &
                      &  i, freq(i), 0.0_wp, 0.0_wp, 0.0_wp, 0.0_wp
                else
                   write (ich, '(i6,8x,"a",f18.2,f16.5,f16.5,8x,e16.5,8x,e16.5,8x)', advance="no") &
-                     &  i, freq(i), ir_int(i), raman_activity(i), raman_int(i), coupled_int(i)
+                     &  i, freq(i), ir_int(i), raman_activity(i), raman_int(i), conversion_raman_ir(i)
 
                   if (ir_int(i) > thr_int) then
                      write (ich, '(a)', advance="no") "YES"
@@ -258,7 +270,7 @@ contains
                      write (ich, '(5x,a)') "NO "
                   end if
                end if
-            end do
+            end do           
          else
             write (ich, '("$vibrational spectrum")')
             write(ich,'("#  mode     symmetry     wave number   IR intensity   Raman activity   Raman scatt. cross-section   selection rules")')
