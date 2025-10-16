@@ -570,7 +570,7 @@ subroutine numhess( &
       enddo
 
       ! multiply with correct factors to get proper unit -> * autoaa4byamu()
-        res%polt = res%polt * autoaa4byamu() * autokmmol
+      !res%polt = res%polt * autokmmol
 
 
       ! Store coupled intensities in results structure
@@ -649,6 +649,10 @@ subroutine calculate_coupled_average(mu_prime, alpha_prime, result)
            3.0_wp * muy**2 * azz**2
 
    term8 = 12.0_wp * mux**2 * axz**2
+
+   write(*,'(a,2x,8(1x,es12.5))') 'Terms in coupled orientational average:', &
+      & term1, term2, term3, term4, term5, term6, term7, term8
+   flush(*) ! Force output to the screen now.
 
    ! Sum all terms and divide by 105
    result = (term1 + term2 + term3 + term4 + term5 + term6 + term7 + term8) / 105.0_wp
