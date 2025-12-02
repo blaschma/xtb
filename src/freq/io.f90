@@ -204,7 +204,7 @@ contains
       integer :: i
       real(wp) :: thr = 1.0e-2_wp
       real(wp) :: thr_int = 1.0e-2_wp
-      real(wp) :: v_meter, hbycvb, bfactor, prefactor, v0minvito4, raman_act_si
+      real(wp) :: v_meter, hbycvb, hbycv, bfactor, prefactor, v0minvito4, v0plvito4,raman_act_si, coupled_int_si
 
       if (set%elprop == p_elprop_alpha) then
          allocate (raman_int(n3), source=0.0_wp)
@@ -235,12 +235,13 @@ contains
             !> putting it all together
             raman_int(i) = prefactor * hbycvb * v0minvito4 * raman_act_si * 1.0e+20_wp
 
-            if (present(coupled_int)) then               
-               conversion_raman_ir(i) = coupled_int(i)  / m4bykgtoang4byamu()
-               !convert to A^2/sr
-               conversion_raman_ir(i) = prefactor * hbycvb * v0minvito4 * raman_act_si * 1.0e+20_wp 
+            if (present(coupled_int)) then
+               hbycv = h_SI / (lightspeed_SI * v_meter )               
+               ! (v_incident + v_i)^4
+               v0plvito4 = ((v_incident * 1.0e2_wp) + v_meter)**4
+               coupled_int_si = coupled_int(i)  / m4bykgtoang4byamu()
                !convert to cm^2/sr
-               conversion_raman_ir(i) = conversion_raman_ir(i) * 1.0e-16_wp 
+               conversion_raman_ir(i) =  prefactor * hbycv * v0plvito4 *  coupled_int_si * 1.0e+4_wp
             end if
 
          end do
