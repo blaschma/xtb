@@ -204,7 +204,7 @@ contains
       integer :: i
       real(wp) :: thr = 1.0e-2_wp
       real(wp) :: thr_int = 1.0e-2_wp
-      real(wp) :: v_meter, hbycvb, bfactor, prefactor, v0minvito4, raman_act_si
+      real(wp) :: v_meter, hbycvb, hbycv, bfactor, prefactor, v0minvito4, v0plvito4,raman_act_si, coupled_int_si
 
       if (set%elprop == p_elprop_alpha) then
          allocate (raman_int(n3), source=0.0_wp)
@@ -235,17 +235,20 @@ contains
             !> putting it all together
             raman_int(i) = prefactor * hbycvb * v0minvito4 * raman_act_si * 1.0e+20_wp
 
-            if (present(coupled_int)) then               
-               conversion_raman_ir(i) = coupled_int(i)  / m4bykgtoang4byamu()
-               !convert to A^2/sr
-               conversion_raman_ir(i) = prefactor * hbycvb * v0minvito4 * raman_act_si * 1.0e+20_wp 
+            if (present(coupled_int)) then
+               hbycv = h_SI / (lightspeed_SI * v_meter )               
+               ! (v_incident + v_i)^4
+               v0plvito4 = ((v_incident * 1.0e2_wp) + v_meter)**4
+               coupled_int_si = coupled_int(i)  / m4bykgtoang4byamu()
                !convert to cm^2/sr
-               conversion_raman_ir(i) = conversion_raman_ir(i) * 1.0e-16_wp 
+               conversion_raman_ir(i) =  prefactor * hbycv * v0plvito4 *  coupled_int_si * 1.0e+4_wp
             end if
 
          end do
 
          if (present(coupled_int)) then         
+            ! Calculate up-conversion property P
+            call calculate_thz_target(freq, conversion_raman_ir)
 
             write (ich, '("$vibrational spectrum")')
             write(ich,'("#  mode     symmetry     wave number   IR intensity   Raman activity   Raman scatt. cross-section   IR-Raman conversion    selection rules")')
@@ -535,5 +538,45 @@ contains
       return
 
    end subroutine g98fake
+
+   ! Calculate THz frequency up-conversion target
+   subroutine calculate_thz_target(freq, conversion_raman_ir)
+      use xtb_mctc_accuracy, only : wp
+      implicit none
+ 
+      real(wp), intent(in)  :: freq(:)
+      real(wp), intent(in)  :: conversion_raman_ir(:)
+ 
+      integer :: mode
+      real(wp), allocatable :: conversion_thz(:)
+      real(wp) :: tmean, tstd, thz_sum, fmin,fmax, thz_target
+ 
+      tmean = -28.367672289689146_wp
+      tstd  = 0.3809242121851108_wp
+      fmin=30.0_wp
+      fmax=1000.0_wp
+ 
+      allocate(conversion_thz(size(freq)))
+      conversion_thz = 0.0_wp
+ 
+      do mode = 1, size(freq)
+          if (freq(mode) >= fmin .and. freq(mode) <= fmax) then
+              conversion_thz(mode) = conversion_raman_ir(mode)
+          end if
+      end do
+ 
+      thz_sum = sum(conversion_thz)
+ 
+      if (thz_sum <= 0.0_wp) then
+          print *, "THz target P: NaN"
+      else
+          thz_target = (log10(thz_sum) - tmean) / tstd
+          print *, "THz target P: ", thz_target
+      end if
+ 
+      deallocate(conversion_thz)
+      return
+
+   end subroutine calculate_thz_target
 
 end module xtb_freq_io

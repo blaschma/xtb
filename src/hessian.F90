@@ -578,8 +578,7 @@ subroutine numhess( &
       ! Store coupled intensities in results structure
       if (allocated(res%coupled)) deallocate(res%coupled)
       allocate(res%coupled(n3))
-      res%coupled = coupled_int
-      !res%coupled = coupled_int * autokmmol * autoaa4byamu()
+      res%coupled = coupled_int * autokmmol *45 *3 * autoaa4byamu()
 
       write(env%unit,'(a)') 'Coupled IR-Raman intensities calculated'
       write(env%unit,'(100(1x,es12.5))') res%coupled
